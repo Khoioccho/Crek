@@ -1,0 +1,22 @@
+DROP YOUR 3D MODELS IN THIS FOLDER
+==================================
+
+The game auto-detects models here and uses them in place of the placeholder
+primitives. If a model is missing, the placeholder is used instead.
+
+Name the imported asset EXACTLY (the file name becomes the asset name):
+
+    Village   <- abandoned Lithuanian farmstead ruins (Sketchfab)
+    Goblin    <- Goblin Warrior (Meshy)
+    Player    <- temporary main character (BlendSwap #4547)
+
+Accepted formats: .fbx, .glb/.gltf (needs the glTFast package), or a .prefab.
+
+After adding a model:
+  - Tune scale / rotation / position in Assets/Scripts/PA_Models.cs
+    (VillageTuning / GoblinTuning / PlayerTuning), then press Play again.
+  - If a model shows up PINK/MAGENTA, its materials are built-in, not URP:
+    Window > Rendering > Render Pipeline Converter >
+    "Built-in to URP" > Material Upgrade > Initialize And Convert.
+
+You can delete this .txt once you've added your models.
