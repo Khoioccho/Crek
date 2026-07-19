@@ -234,16 +234,20 @@ namespace PostApoc
             Villager.Configure(marker.transform);
             SocketWeapon(npcRoot, 0); // the quest-giver carries a pitchfork
 
-            // a few idle villagers for life (with subtle idle motion)
-            foreach (var v in new[]
+            // Nine more villagers stand with you (plus the quest-giver NPC = 10 defenders).
+            // They are mortal: 50 HP and no regen, so they can fall during the raid.
+            Vector3[] villagerOffsets =
             {
-                BuildHumanoid(root, VillageCenter + new Vector3(-6f, 0f, 3f), 90f, "Villager", _coat, _skin, _hat),
-                BuildHumanoid(root, VillageCenter + new Vector3(6f, 0f, 4f), -100f, "Villager", _coat, _skin, _hat),
-                BuildHumanoid(root, VillageCenter + new Vector3(2f, 0f, 9f), 200f, "Villager", _coat, _skin, _hat),
-            })
+                new Vector3(-6f, 0f, 3f),  new Vector3(6f, 0f, 4f),   new Vector3(2f, 0f, 9f),
+                new Vector3(-3f, 0f, 6f),  new Vector3(4f, 0f, 8f),   new Vector3(-7f, 0f, 10f),
+                new Vector3(7f, 0f, 11f),  new Vector3(0f, 0f, 13f),  new Vector3(-2f, 0f, 2f),
+            };
+            Random.InitState(321);
+            foreach (var off in villagerOffsets)
             {
+                var v = BuildHumanoid(root, VillageCenter + off, Random.Range(0f, 360f), "Villager", _coat, _skin, _hat);
                 var cb = v.AddComponent<Combatant>();
-                cb.faction = Faction.Friendly; cb.maxHealth = 100f; cb.health = 100f; cb.regenPerSec = 2f;
+                cb.faction = Faction.Friendly; cb.maxHealth = 50f; cb.health = 50f; cb.regenPerSec = 0f;
                 v.AddComponent<AllyAI>();
                 AddBodyCollider(v, 1.75f);
                 SocketWeapon(v, Random.Range(0, 2));
@@ -259,7 +263,7 @@ namespace PostApoc
             if (go.GetComponent<Combatant>() == null)
             {
                 var cb = go.AddComponent<Combatant>();
-                cb.faction = Faction.Friendly; cb.maxHealth = 100f; cb.health = 100f; cb.regenPerSec = 2f;
+                cb.faction = Faction.Friendly; cb.maxHealth = 50f; cb.health = 50f; cb.regenPerSec = 0f;
             }
             if (go.GetComponent<AllyAI>() == null) go.AddComponent<AllyAI>();
             if (go.GetComponent<CapsuleCollider>() == null) AddBodyCollider(go, 1.75f);
@@ -570,11 +574,11 @@ namespace PostApoc
             return pc;
         }
 
-        public void SpawnGoblinWave(int count)
+        public void SpawnGoblinWave(int count, int waveIndex = 0)
         {
-            var root = new GameObject("Goblins").transform;
+            var root = new GameObject("Goblins " + (waveIndex + 1)).transform;
             root.SetParent(transform, false);
-            Random.InitState(555);
+            Random.InitState(555 + waveIndex * 131);
             for (int i = 0; i < count; i++)
             {
                 float t = count <= 1 ? 0.5f : i / (count - 1f);

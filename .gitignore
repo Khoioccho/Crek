@@ -63,3 +63,7 @@ crashlytics-build.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code local config + IDE solution files
+.claude/
+*.slnx

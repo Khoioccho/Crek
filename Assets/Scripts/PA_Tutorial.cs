@@ -65,27 +65,43 @@ namespace PostApoc
 
             _hud.SetObjective("Defend the village!");
             _world.ActivateVillagerCombat();                                  // villagers join in
-            int n = Mathf.Clamp(Combatant.Count(Faction.Friendly), 3, 8);     // one skeleton per defender
-            _world.SpawnGoblinWave(n);
-            _hud.SetBossBar("RISEN  HORDE");
             _hud.ShowToast("[LMB] attack • [RMB] heavy • [Tab] lock-on • [C] roll (i-frames)", 6f);
 
-            yield return new WaitForSeconds(0.6f);
-            while (Combatant.Count(Faction.Enemy) > 0)
+            // Three escalating waves: 3, then 5, then 10 skeletons.
+            int[] waves = { 3, 5, 10 };
+            for (int w = 0; w < waves.Length; w++)
             {
-                if (_player.Combat != null && _player.Combat.IsDead)
+                bool last = w == waves.Length - 1;
+                _hud.ShowToast(last
+                    ? $"FINAL WAVE — {waves[w]} skeletons pour down from the ridge!"
+                    : $"Wave {w + 1} of {waves.Length} — {waves[w]} skeletons approach!", 3.5f);
+                _world.SpawnGoblinWave(waves[w], w);
+                _hud.SetBossBar(last ? "RISEN  HORDE  —  FINAL  WAVE"
+                                     : $"RISEN  HORDE  —  WAVE  {w + 1}/{waves.Length}");
+
+                yield return new WaitForSeconds(0.6f);
+                while (Combatant.Count(Faction.Enemy) > 0)
                 {
-                    // souls-style death: YOU DIED, lose souls, respawn at the village entrance
-                    _player.controlEnabled = false;
-                    yield return new WaitForSeconds(1.0f);   // let the death anim land
-                    yield return _hud.BigBanner("YOU DIED", new Color(0.62f, 0.07f, 0.05f), 1.3f);
-                    _player.transform.position = _world.VillageCenter + new Vector3(0f, 1f, -14f);
-                    _player.ResetAfterRespawn();
+                    if (_player.Combat != null && _player.Combat.IsDead)
+                    {
+                        // souls-style death: YOU DIED, respawn at the village entrance
+                        _player.controlEnabled = false;
+                        yield return new WaitForSeconds(1.0f);   // let the death anim land
+                        yield return _hud.BigBanner("YOU DIED", new Color(0.62f, 0.07f, 0.05f), 1.3f);
+                        _player.transform.position = _world.VillageCenter + new Vector3(0f, 1f, -14f);
+                        _player.ResetAfterRespawn();
+                    }
+                    yield return null;
                 }
-                yield return null;
+
+                _hud.ClearBossBar();
+                if (!last)
+                {
+                    _hud.ShowToast($"Wave {w + 1} repelled!  Brace yourselves — more are coming...", 3f);
+                    yield return new WaitForSeconds(3.5f);
+                }
             }
 
-            _hud.ClearBossBar();
             _hud.SetObjective("");
             yield return _hud.BigBanner("VICTORY  ACHIEVED", new Color(0.83f, 0.66f, 0.30f), 1.6f);
             _hud.ShowBanner("PROLOGUE COMPLETE",
