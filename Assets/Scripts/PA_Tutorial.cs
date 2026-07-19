@@ -51,7 +51,7 @@ namespace PostApoc
             _world.Villager.Enable(new[]
             {
                 "Villager:  You there — stranger! You picked a black day to wander in.",
-                "Villager:  The dead are rising — skeletons march on us from the north ridge.",
+                "Villager:  The dead are rising — skeletons claw their way up the old road from the wastes.",
                 "Villager:  Our walls are thin and our blades are few. Will you stand with us?",
                 "Villager:  Then take this — every hand counts. Defend the village with us!"
             }, OnTalked);
@@ -73,8 +73,8 @@ namespace PostApoc
             {
                 bool last = w == waves.Length - 1;
                 _hud.ShowToast(last
-                    ? $"FINAL WAVE — {waves[w]} skeletons pour down from the ridge!"
-                    : $"Wave {w + 1} of {waves.Length} — {waves[w]} skeletons approach!", 3.5f);
+                    ? $"FINAL WAVE — {waves[w]} skeletons surge up the road!"
+                    : $"Wave {w + 1} of {waves.Length} — {waves[w]} skeletons approach from the wastes!", 3.5f);
                 _world.SpawnGoblinWave(waves[w], w);
                 _hud.SetBossBar(last ? "RISEN  HORDE  —  FINAL  WAVE"
                                      : $"RISEN  HORDE  —  WAVE  {w + 1}/{waves.Length}");
@@ -84,12 +84,16 @@ namespace PostApoc
                 {
                     if (_player.Combat != null && _player.Combat.IsDead)
                     {
-                        // souls-style death: YOU DIED, respawn at the village entrance
+                        // death -> YOU DIED screen with a RETRY / QUIT menu (no auto-revive)
                         _player.controlEnabled = false;
-                        yield return new WaitForSeconds(1.0f);   // let the death anim land
-                        yield return _hud.BigBanner("YOU DIED", new Color(0.62f, 0.07f, 0.05f), 1.3f);
-                        _player.transform.position = _world.VillageCenter + new Vector3(0f, 1f, -14f);
-                        _player.ResetAfterRespawn();
+                        yield return new WaitForSeconds(1.0f);            // let the death anim land
+                        _hud.ShowDeathMenu();
+                        while (_hud.DeathChoice < 0) yield return null;   // wait for the player's choice
+                        int choice = _hud.DeathChoice;
+                        _hud.HideDeathMenu();
+                        if (choice == 1) GameManager.Instance.ReturnToMenu();   // QUIT TO MENU
+                        else GameManager.Instance.RestartGame();               // RETRY -> replay the prologue
+                        yield break;
                     }
                     yield return null;
                 }

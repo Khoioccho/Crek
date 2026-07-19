@@ -234,22 +234,23 @@ namespace PostApoc
             Villager.Configure(marker.transform);
             SocketWeapon(npcRoot, 0); // the quest-giver carries a pitchfork
 
-            // Nine more villagers stand with you (plus the quest-giver NPC = 10 defenders).
-            // They are mortal: 50 HP and no regen, so they can fall during the raid.
+            // Four more villagers form a line at the entrance (plus the quest-giver NPC = 5
+            // defenders). They hold the OPEN ground just south of the village, clear of the
+            // buildings, and face the road. Mortal: 50 HP, no regen.
             Vector3[] villagerOffsets =
             {
-                new Vector3(-6f, 0f, 3f),  new Vector3(6f, 0f, 4f),   new Vector3(2f, 0f, 9f),
-                new Vector3(-3f, 0f, 6f),  new Vector3(4f, 0f, 8f),   new Vector3(-7f, 0f, 10f),
-                new Vector3(7f, 0f, 11f),  new Vector3(0f, 0f, 13f),  new Vector3(-2f, 0f, 2f),
+                new Vector3(-5f, 0f, -11f), new Vector3(5f, 0f, -11f),
+                new Vector3(-3f, 0f, -14f), new Vector3(3f, 0f, -14f),
             };
             Random.InitState(321);
             foreach (var off in villagerOffsets)
             {
-                var v = BuildHumanoid(root, VillageCenter + off, Random.Range(0f, 360f), "Villager", _coat, _skin, _hat);
+                var v = BuildHumanoid(root, VillageCenter + off, 180f, "Villager", _coat, _skin, _hat);
                 var cb = v.AddComponent<Combatant>();
                 cb.faction = Faction.Friendly; cb.maxHealth = 50f; cb.health = 50f; cb.regenPerSec = 0f;
                 v.AddComponent<AllyAI>();
                 AddBodyCollider(v, 1.75f);
+                v.AddComponent<BodySeparation>();
                 SocketWeapon(v, Random.Range(0, 2));
             }
         }
@@ -267,6 +268,7 @@ namespace PostApoc
             }
             if (go.GetComponent<AllyAI>() == null) go.AddComponent<AllyAI>();
             if (go.GetComponent<CapsuleCollider>() == null) AddBodyCollider(go, 1.75f);
+            if (go.GetComponent<BodySeparation>() == null) go.AddComponent<BodySeparation>();
         }
 
         // Kinematic capsule so the player can't walk through a humanoid.
@@ -428,13 +430,14 @@ namespace PostApoc
             string[] props = { "SM_Rock_1", "SM_Rock_2", "SM_Rock_3", "SM_Rock_4", "SM_Rock_5", "SM_cactus", "SM_Cactus_2" };
             bool haveProps = PAModels.Has("Props/SM_Rock_1");
 
-            int count = haveProps ? 60 : 40;
+            int count = haveProps ? 30 : 22;                 // sparser wasteland (fewer rocks)
             for (int i = 0; i < count; i++)
             {
                 float x = Random.Range(-48f, 48f);
                 float z = Random.Range(-22f, 82f);
-                // keep the path corridor and the buildings clear
-                if (Mathf.Abs(x) < 4f && z > -6f && z < 58f) continue;
+                // keep the WHOLE approach lane (road + entrance) clear so villagers/skeletons
+                // don't march through rocks, plus the buildings and the house.
+                if (Mathf.Abs(x) < 12f && z > -12f && z < 58f) continue;
                 if (Mathf.Abs(x) < 7f && Mathf.Abs(z - HouseCenter.z) < 7f) continue;
                 if ((new Vector3(x, 0, z) - VillageCenter).sqrMagnitude < 18f * 18f) continue;
 
@@ -579,16 +582,19 @@ namespace PostApoc
             var root = new GameObject("Goblins " + (waveIndex + 1)).transform;
             root.SetParent(transform, false);
             Random.InitState(555 + waveIndex * 131);
+            // Spawn far down the open road to the SOUTH, spread in a line, then let the AI
+            // march them NORTH into the entrance — a clear lane with no buildings in the way.
             for (int i = 0; i < count; i++)
             {
                 float t = count <= 1 ? 0.5f : i / (count - 1f);
-                float x = Mathf.Lerp(-11f, 11f, t) + Random.Range(-1.2f, 1.2f);
-                float z = 12f + Random.Range(-2f, 5f);   // north of the square -> they march in
-                BuildGoblin(root, VillageCenter + new Vector3(x, 0f, z));
+                float x = Mathf.Lerp(-10f, 10f, t) + Random.Range(-1.5f, 1.5f);
+                float z = -38f - Random.Range(0f, 8f);   // ~38-46m south -> long clear approach
+                var g = BuildGoblin(root, VillageCenter + new Vector3(x, 0f, z));
+                g.transform.rotation = Quaternion.identity;   // face north toward the village
             }
         }
 
-        void BuildGoblin(Transform parent, Vector3 pos)
+        GameObject BuildGoblin(Transform parent, Vector3 pos)
         {
             var root = new GameObject("Goblin");
             root.transform.SetParent(parent, false);
@@ -632,10 +638,56 @@ namespace PostApoc
             rb.useGravity = false;
 
             var cbt = root.AddComponent<Combatant>();
-            cbt.faction = Faction.Enemy; cbt.maxHealth = 100f; cbt.health = 100f;
+            cbt.faction = Faction.Enemy; cbt.maxHealth = 45f; cbt.health = 45f;
+            root.AddComponent<BodySeparation>();
 
             var g = root.AddComponent<Goblin>();
             g.speed = Random.Range(1.9f, 2.6f);
+            return root;
+        }
+    }
+
+    // Cheap mutual body collision for transform-driven kinematic characters (villagers +
+    // skeletons): two kinematic bodies moved by script pass through each other, so each frame
+    // we push overlapping bodies apart on the horizontal plane. The player is unaffected — its
+    // CharacterController already collides with these capsules.
+    public class BodySeparation : MonoBehaviour
+    {
+        public float radius = 0.5f;
+        static readonly System.Collections.Generic.List<BodySeparation> All =
+            new System.Collections.Generic.List<BodySeparation>();
+        Combatant _self;
+
+        void Awake() { _self = GetComponent<Combatant>(); }
+        void OnEnable() { All.Add(this); }
+        void OnDisable() { All.Remove(this); }
+
+        void LateUpdate()
+        {
+            if (_self != null && _self.IsDead) return;
+            Vector3 p = transform.position, push = Vector3.zero;
+            for (int i = 0; i < All.Count; i++)
+            {
+                var o = All[i];
+                if (o == this || o == null) continue;
+                if (o._self != null && o._self.IsDead) continue;
+                Vector3 d = p - o.transform.position; d.y = 0f;
+                float min = radius + o.radius;
+                float sq = d.sqrMagnitude;
+                if (sq >= min * min) continue;
+                if (sq > 1e-4f)
+                {
+                    float dist = Mathf.Sqrt(sq);
+                    push += d * ((min - dist) / dist);
+                }
+                else
+                {
+                    // exactly coincident: deterministic nudge so they don't lock together
+                    push += new Vector3((GetInstanceID() & 1) == 0 ? 0.02f : -0.02f, 0f, 0.01f);
+                }
+            }
+            if (push.sqrMagnitude > 1e-6f)
+                transform.position = p + push * 0.5f;   // both bodies push -> full separation
         }
     }
 

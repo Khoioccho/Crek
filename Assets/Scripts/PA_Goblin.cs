@@ -7,7 +7,7 @@ namespace PostApoc
     // attackers (then nearest), so the wave spreads out 1-on-1 instead of dogpiling.
     public class Goblin : MonoBehaviour
     {
-        public float speed = 2.3f, attackRange = 2.2f, attackDamage = 10f, attackCooldown = 1.5f;
+        public float speed = 2.3f, attackRange = 2.2f, attackDamage = 6f, attackCooldown = 1.8f;
 
         Combatant _self, _target;
         Animator _anim;

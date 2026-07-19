@@ -21,6 +21,7 @@ namespace PostApoc
         int _drag = -1;   // active settings slider
         int _selOpt;
         string _ds3Text = ""; Color _ds3Color; float _ds3Band, _ds3TextA;
+        bool _deathMenu; int _deathChoice = -1;
 
         Texture2D _px;
         GUIStyle _obj, _toastSt, _promptSt, _wp, _dlgSt, _hint, _bigT, _bigS, _hpNum, _optLabel, _optValue;
@@ -34,6 +35,7 @@ namespace PostApoc
         {
             Fade = 0f; _objective = ""; _toast = ""; _prompt = "";
             _hasWaypoint = false; _dlgActive = false; _banner = false;
+            _bossOn = false; _deathMenu = false; _deathChoice = -1;
         }
 
         public void SetFade(float f) { Fade = Mathf.Clamp01(f); }
@@ -52,7 +54,11 @@ namespace PostApoc
         public void ClearPrompt() { _prompt = ""; }
         public void SetWaypoint(Vector3 w, string label) { _hasWaypoint = true; _waypoint = w; _waypointLabel = label; }
         public void ClearWaypoint() { _hasWaypoint = false; }
-        public void ShowBanner(string t, string s) { _banner = true; _bannerT = t; _bannerS = s; }
+        public void ShowBanner(string t, string s)
+        {
+            _banner = true; _bannerT = t; _bannerS = s;
+            Cursor.lockState = CursorLockMode.None; Cursor.visible = true;   // so the menu button is clickable
+        }
         // Locks in the wave's combined max HP at call time (call AFTER spawning the wave),
         // so kills drain the bar permanently instead of rescaling it.
         public void SetBossBar(string name)
@@ -63,6 +69,17 @@ namespace PostApoc
                 if (c != null && !c.IsDead && c.faction == Faction.Enemy) _bossMax += c.maxHealth;
         }
         public void ClearBossBar() { _bossOn = false; }
+
+        // Death screen with a RETRY / QUIT menu. The tutorial polls DeathChoice
+        // (0 = retry, 1 = quit) and then calls HideDeathMenu().
+        public bool DeathMenuActive => _deathMenu;
+        public int DeathChoice => _deathChoice;
+        public void ShowDeathMenu()
+        {
+            _deathMenu = true; _deathChoice = -1;
+            Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
+        }
+        public void HideDeathMenu() { _deathMenu = false; _deathChoice = -1; }
 
         // Dark-Souls-style center band ("YOU DIED" / "VICTORY ACHIEVED").
         public IEnumerator BigBanner(string text, Color color, float hold)
@@ -297,7 +314,41 @@ namespace PostApoc
                 _bigT.normal.textColor = new Color(0.90f, 0.72f, 0.48f);
             }
 
+            if (_deathMenu) DrawDeathMenu(w, h);
+
             if (Fade > 0f) Dim(new Rect(0, 0, w, h), Fade);
+        }
+
+        // A clickable themed button (Input-System driven, IMGUI-event independent).
+        bool Button(Rect r, string label, bool enabled)
+        {
+            Vector2 mp = PAInput.MouseGui();
+            bool hover = r.Contains(mp);
+            PAUI.DrawButton(r, label, hover, _obj);
+            return enabled && hover && PAInput.MouseLeftDown();
+        }
+
+        void DrawDeathMenu(float w, float h)
+        {
+            Dim(new Rect(0, 0, w, h), 0.80f);
+
+            // giant crimson "YOU DIED"
+            var keepC = _bigT.normal.textColor; int keepS = _bigT.fontSize;
+            _bigT.normal.textColor = new Color(0.66f, 0.08f, 0.06f);
+            _bigT.fontSize = Mathf.RoundToInt(h * 0.10f);
+            GUI.Label(new Rect(0, h * 0.24f, w, h * 0.16f), "YOU DIED", _bigT);
+            _bigT.fontSize = keepS; _bigT.normal.textColor = keepC;
+
+            GUI.Label(new Rect(0, h * 0.42f, w, h * 0.05f), "The village still needs you.", _toastSt);
+
+            float bw = Mathf.Clamp(w * 0.24f, 240f, 460f), bh = Mathf.Max(48f, h * 0.082f);
+            float cx = w * 0.5f - bw * 0.5f;
+            var retryR = new Rect(cx, h * 0.52f, bw, bh);
+            var quitR = new Rect(cx, retryR.yMax + h * 0.022f, bw, bh);
+
+            bool en = _deathChoice < 0;
+            if (Button(retryR, "RETRY", en)) _deathChoice = 0;
+            if (Button(quitR, "QUIT TO MENU", en)) _deathChoice = 1;
         }
 
         void DrawDialogue(float w, float h)
@@ -311,11 +362,19 @@ namespace PostApoc
 
         void DrawBanner(float w, float h)
         {
-            Dim(new Rect(0, 0, w, h), 0.55f);
-            var r = new Rect(w * 0.5f - w * 0.30f, h * 0.34f, w * 0.60f, h * 0.30f);
+            Dim(new Rect(0, 0, w, h), 0.6f);
+            var r = new Rect(w * 0.5f - w * 0.30f, h * 0.30f, w * 0.60f, h * 0.36f);
             PAUI.DrawPanel(r);
-            GUI.Label(new Rect(0, h * 0.40f, w, h * 0.12f), _bannerT, _bigT);
-            GUI.Label(new Rect(w * 0.5f - w * 0.27f, h * 0.52f, w * 0.54f, h * 0.08f), _bannerS, _bigS);
+            GUI.Label(new Rect(0, h * 0.35f, w, h * 0.12f), _bannerT, _bigT);
+            GUI.Label(new Rect(w * 0.5f - w * 0.27f, h * 0.47f, w * 0.54f, h * 0.08f), _bannerS, _bigS);
+
+            float bw = Mathf.Clamp(w * 0.22f, 220f, 400f), bh = Mathf.Max(46f, h * 0.075f);
+            var btn = new Rect(w * 0.5f - bw * 0.5f, h * 0.565f, bw, bh);
+            if (Button(btn, "EXIT TO MENU", true))
+            {
+                _banner = false;
+                GameManager.Instance?.ReturnToMenu();
+            }
         }
 
         void DrawEnemyBars(float w, float h)
@@ -326,12 +385,18 @@ namespace PostApoc
             Vector3 camPos = cam.transform.position;
             float bw = Mathf.Clamp(w * 0.05f, 48f, 90f);
             float bh = Mathf.Max(5f, h * 0.008f);
+            var playerCb = gm.Player != null ? gm.Player.Combat : null;
 
             foreach (var c in Combatant.All)
             {
-                if (c == null || c.IsDead || c.faction != Faction.Enemy) continue;
-                if ((c.transform.position - camPos).sqrMagnitude > 45f * 45f) continue;
+                if (c == null || c.IsDead) continue;
 
+                bool enemy = c.faction == Faction.Enemy;
+                // villager (friendly) bars only appear once the wave attack is on, and never
+                // over the player himself (he already has the corner HP bar).
+                if (!enemy && (!_bossOn || c == playerCb)) continue;
+
+                if ((c.transform.position - camPos).sqrMagnitude > 45f * 45f) continue;
                 Vector3 sp = cam.WorldToScreenPoint(c.transform.position + Vector3.up * 2.0f);
                 if (sp.z <= 0f) continue;
 
@@ -340,11 +405,13 @@ namespace PostApoc
                 if (x + bw < 0f || x > w) continue;
 
                 float frac = c.maxHealth > 0f ? Mathf.Clamp01(c.health / c.maxHealth) : 0f;
+                Color fill = enemy ? new Color(0.85f, 0.16f, 0.13f, 1f)    // crimson enemies
+                                   : new Color(0.32f, 0.72f, 0.28f, 1f);   // green allies
                 GUI.color = new Color(0f, 0f, 0f, 0.7f);
                 GUI.DrawTexture(new Rect(x - 1f, y - 1f, bw + 2f, bh + 2f), _px);
                 GUI.color = new Color(0.12f, 0.12f, 0.12f, 0.9f);
                 GUI.DrawTexture(new Rect(x, y, bw, bh), _px);
-                GUI.color = new Color(0.85f, 0.16f, 0.13f, 1f);
+                GUI.color = fill;
                 GUI.DrawTexture(new Rect(x, y, bw * frac, bh), _px);
                 GUI.color = Color.white;
             }

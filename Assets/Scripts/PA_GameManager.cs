@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 namespace PostApoc
@@ -124,6 +125,35 @@ namespace PostApoc
             Cursor.lockState = Paused ? CursorLockMode.None : CursorLockMode.Locked;
             Cursor.visible = Paused;
             if (!Paused) PASettings.Save();   // persist any settings changed in the pause menu
+        }
+
+        // Destroy the in-progress game (world, player, tutorial) and clear the combat registry.
+        void Teardown()
+        {
+            if (Tutorial != null) { Destroy(Tutorial.gameObject); Tutorial = null; }
+            if (Player != null) { Destroy(Player.gameObject); Player = null; }
+            if (World != null) { Destroy(World.gameObject); World = null; }
+            Combatant.All.Clear();
+        }
+
+        // Tear down and return to the main menu.
+        public void ReturnToMenu()
+        {
+            Teardown();
+            if (Cam != null) Cam.transform.SetPositionAndRotation(new Vector3(0f, 2f, -10f), Quaternion.identity);
+            EnterMenu();
+        }
+
+        // Full restart: tear down and replay the prologue from waking up in the house.
+        public void RestartGame() { StartCoroutine(RestartRoutine()); }
+
+        IEnumerator RestartRoutine()
+        {
+            if (Hud != null) { Hud.ResetAll(); Hud.SetFade(1f); }   // clear stale HUD, cut to black
+            Teardown();
+            State = GameState.Menu;   // let StartGame's guard pass
+            yield return null;        // wait a frame for the old objects to finish destroying
+            StartGame();
         }
 
         public void Quit()

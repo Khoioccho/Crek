@@ -7,7 +7,7 @@ namespace PostApoc
     // (Speed / Attack / Die). Falls back to a procedural sway if there's no Animator.
     public class AllyAI : MonoBehaviour
     {
-        public float speed = 2.6f, attackRange = 2.2f, attackDamage = 10f, attackCooldown = 1.3f;
+        public float speed = 2.6f, attackRange = 2.2f, attackDamage = 7f, attackCooldown = 1.5f;
 
         Combatant _self, _target;
         float _cd, _seed, _baseYaw;
