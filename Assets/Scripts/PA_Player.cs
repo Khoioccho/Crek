@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 namespace PostApoc
@@ -32,7 +33,7 @@ namespace PostApoc
         public float maxStamina = 100f;
         public float stamina = 100f;
         public float staminaRegen = 40f;
-        public float lightCost = 18f, heavyCost = 35f, rollCost = 25f, sprintCostPerSec = 12f;
+        public float lightCost = 18f, heavyCost = 35f, rollCost = 25f, jumpCost = 15f, sprintCostPerSec = 12f;
         float _stamDelay;
         public float rollDuration = 0.55f;
         public float rollSpeed = 9f;
@@ -214,25 +215,31 @@ namespace PostApoc
                 else LockTarget = AcquireLockTarget();
             }
             if (LockTarget != null &&
-                (LockTarget.IsDead || (LockTarget.transform.position - transform.position).sqrMagnitude > 26f * 26f))
+                (LockTarget.IsDead ||
+                 (LockTarget.transform.position - transform.position).sqrMagnitude > 26f * 26f ||
+                 !AITraversal.CanHit(transform, LockTarget.transform, 26f)))
                 LockTarget = null;
 
             // attacks (blocked while rolling / out of stamina)
             _atkCd -= dt;
             if (_attackT > 0f) _attackT -= dt;
-            if (active && !rolling && _atkCd <= 0f && stamina > 0f)
+            if (active && !rolling && _atkCd <= 0f)
             {
                 bool light = PAInput.AttackDown();
                 bool heavy = !light && PAInput.HeavyDown();
-                if (light || heavy)
+                float cost = heavy ? heavyCost : lightCost;
+                if ((light || heavy) && stamina >= cost)
                 {
                     _atkCd = heavy ? heavyCooldown : attackCooldown;
                     _attackT = 0.22f;
-                    Spend(heavy ? heavyCost : lightCost);
+                    Spend(cost);
                     if (_anim != null && _aAtk) _anim.SetTrigger("Attack");
                     if (_fpArms != null) _fpArms.Attack();
                     AudioManager.Sfx(AudioManager.Whoosh, transform.position, heavy ? 0.9f : 0.65f);
-                    DoAttack(heavy ? heavyDamage : attackDamage);
+                    SpawnSlash();
+                    StartCoroutine(ApplyAttackAfterWindup(
+                        heavy ? heavyDamage : attackDamage,
+                        heavy ? 0.34f : 0.16f));
                 }
             }
 
@@ -277,7 +284,7 @@ namespace PostApoc
             Vector3 wish = moveDir * (sprinting ? runSpeed : walkSpeed);
 
             // dodge roll (C): burst of speed + i-frames
-            if (active && !rolling && _cc.isGrounded && stamina > 0f && PAInput.RollDown())
+            if (active && !rolling && _cc.isGrounded && stamina >= rollCost && PAInput.RollDown())
             {
                 _rollT = rollDuration;
                 rolling = true;
@@ -307,10 +314,11 @@ namespace PostApoc
                     Vector3 toT = LockTarget.transform.position - transform.position;
                     _bodyYaw = Mathf.MoveTowardsAngle(_bodyYaw, Mathf.Atan2(toT.x, toT.z) * Mathf.Rad2Deg, 540f * dt);
                 }
-                else if (moveDir.sqrMagnitude > 0.001f)
+                else
                 {
-                    float target = Mathf.Atan2(moveDir.x, moveDir.z) * Mathf.Rad2Deg;
-                    _bodyYaw = Mathf.MoveTowardsAngle(_bodyYaw, target, 540f * dt);
+                    // Mouse/camera heading controls facing even while standing still.
+                    // Movement remains camera-relative, so W moves toward the current view.
+                    _bodyYaw = Mathf.MoveTowardsAngle(_bodyYaw, _camYaw, 720f * dt);
                 }
             }
             else _bodyYaw = _camYaw;
@@ -319,8 +327,9 @@ namespace PostApoc
             if (_cc.isGrounded)
             {
                 _vy = -2f;
-                if (active && !rolling && PAInput.JumpDown())
+                if (active && !rolling && stamina >= jumpCost && PAInput.JumpDown())
                 {
+                    Spend(jumpCost);
                     _vy = jumpVel;
                     if (_anim != null && _aJump) _anim.SetTrigger("Jump");
                 }
@@ -373,6 +382,7 @@ namespace PostApoc
                 if (dist > 22f) continue;
                 float ang = Vector3.Angle(fwd, to.normalized);
                 if (ang > 75f) continue;
+                if (!AITraversal.CanHit(transform, c.transform, 22f)) continue;
                 float score = dist + ang * 0.15f;
                 if (score < bestScore) { bestScore = score; best = c; }
             }
@@ -418,9 +428,15 @@ namespace PostApoc
             _visualT.localRotation = _visBaseRot * Quaternion.Euler(lean + atkLean, 0f, roll);
         }
 
+        IEnumerator ApplyAttackAfterWindup(float damage, float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            if (Combat == null || Combat.IsDead || !controlEnabled) yield break;
+            DoAttack(damage);
+        }
+
         void DoAttack(float damage)
         {
-            SpawnSlash();
             Vector3 origin = transform.position;
             Vector3 fwd = transform.forward;
 
@@ -428,7 +444,13 @@ namespace PostApoc
             if (LockTarget != null && !LockTarget.IsDead)
             {
                 Vector3 toL = LockTarget.transform.position - origin; toL.y = 0f;
-                if (toL.sqrMagnitude <= attackRange * attackRange) { LockTarget.TakeDamage(damage); return; }
+                if (toL.sqrMagnitude <= attackRange * attackRange &&
+                    Vector3.Dot(fwd, toL.normalized) >= 0.05f &&
+                    AITraversal.CanHit(transform, LockTarget.transform, attackRange))
+                {
+                    LockTarget.TakeDamage(damage);
+                    return;
+                }
             }
 
             Combatant best = null; float bd = attackRange * attackRange;
@@ -439,6 +461,7 @@ namespace PostApoc
                 float sq = to.sqrMagnitude;
                 if (sq > attackRange * attackRange) continue;
                 if (Vector3.Dot(fwd, to.normalized) < 0.2f) continue;
+                if (!AITraversal.CanHit(transform, c.transform, attackRange)) continue;
                 if (sq < bd) { bd = sq; best = c; }
             }
             if (best != null) best.TakeDamage(damage);

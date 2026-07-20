@@ -21,7 +21,7 @@ namespace PostApoc
         int _drag = -1;   // active settings slider
         int _selOpt;
         string _ds3Text = ""; Color _ds3Color; float _ds3Band, _ds3TextA;
-        bool _deathMenu; int _deathChoice = -1;
+        bool _deathMenu; int _deathChoice = -1, _deathSelection;
 
         Texture2D _px;
         GUIStyle _obj, _toastSt, _promptSt, _wp, _dlgSt, _hint, _bigT, _bigS, _hpNum, _optLabel, _optValue;
@@ -35,7 +35,7 @@ namespace PostApoc
         {
             Fade = 0f; _objective = ""; _toast = ""; _prompt = "";
             _hasWaypoint = false; _dlgActive = false; _banner = false;
-            _bossOn = false; _deathMenu = false; _deathChoice = -1;
+            _bossOn = false; _deathMenu = false; _deathChoice = -1; _deathSelection = 0;
         }
 
         public void SetFade(float f) { Fade = Mathf.Clamp01(f); }
@@ -76,10 +76,15 @@ namespace PostApoc
         public int DeathChoice => _deathChoice;
         public void ShowDeathMenu()
         {
-            _deathMenu = true; _deathChoice = -1;
+            _deathMenu = true; _deathChoice = -1; _deathSelection = 0;
+            GameManager.Instance?.SetDeathFrozen(true);
             Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
         }
-        public void HideDeathMenu() { _deathMenu = false; _deathChoice = -1; }
+        public void HideDeathMenu()
+        {
+            _deathMenu = false; _deathChoice = -1; _deathSelection = 0;
+            GameManager.Instance?.SetDeathFrozen(false);
+        }
 
         // Dark-Souls-style center band ("YOU DIED" / "VICTORY ACHIEVED").
         public IEnumerator BigBanner(string text, Color color, float hold)
@@ -113,6 +118,15 @@ namespace PostApoc
         {
             if (_toast != "" && Time.time > _toastUntil) _toast = "";
 
+            if (_deathMenu && _deathChoice < 0)
+            {
+                int nav = PAInput.MenuNavY();
+                if (nav != 0) _deathSelection = Mathf.Clamp(_deathSelection + nav, 0, 1);
+                if (PAInput.MenuSubmitDown()) _deathChoice = _deathSelection;
+                else if (PAInput.BackDown()) _deathChoice = 1;
+                return;
+            }
+
             var gmP = GameManager.Instance;
             if (gmP != null && gmP.Paused && gmP.State == GameState.Playing)
             {
@@ -120,6 +134,7 @@ namespace PostApoc
                 if (ny != 0) _selOpt = Mathf.Clamp(_selOpt + ny, 0, 3);
                 int nx = PAInput.MenuNavX();
                 if (nx != 0) PASettings.Adjust(_selOpt, nx);
+                return; // do not let pause-menu input also advance dialogue/gameplay UI
             }
 
             if (_dlgActive && Time.time - _dlgOpened > 0.18f && PAInput.AdvanceDown())
@@ -320,11 +335,11 @@ namespace PostApoc
         }
 
         // A clickable themed button (Input-System driven, IMGUI-event independent).
-        bool Button(Rect r, string label, bool enabled)
+        bool Button(Rect r, string label, bool enabled, bool focused = false)
         {
             Vector2 mp = PAInput.MouseGui();
             bool hover = r.Contains(mp);
-            PAUI.DrawButton(r, label, hover, _obj);
+            PAUI.DrawButton(r, label, hover || focused, _obj);
             return enabled && hover && PAInput.MouseLeftDown();
         }
 
@@ -347,8 +362,8 @@ namespace PostApoc
             var quitR = new Rect(cx, retryR.yMax + h * 0.022f, bw, bh);
 
             bool en = _deathChoice < 0;
-            if (Button(retryR, "RETRY", en)) _deathChoice = 0;
-            if (Button(quitR, "QUIT TO MENU", en)) _deathChoice = 1;
+            if (Button(retryR, "RETRY", en, _deathSelection == 0)) _deathChoice = 0;
+            if (Button(quitR, "QUIT TO MENU", en, _deathSelection == 1)) _deathChoice = 1;
         }
 
         void DrawDialogue(float w, float h)

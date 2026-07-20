@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 namespace PostApoc
@@ -53,7 +54,7 @@ namespace PostApoc
             {
                 Vector3 to = _target.transform.position - transform.position; to.y = 0f;
                 float dist = to.magnitude;
-                if (dist > attackRange) { transform.position += to.normalized * speed * dt; Face(to, dt); moving = speed; }
+                if (dist > attackRange) { AITraversal.Move(transform, to.normalized, speed, dt); Face(to, dt); moving = speed; }
                 else
                 {
                     Face(to, dt);
@@ -61,13 +62,21 @@ namespace PostApoc
                     if (_cd <= 0f)
                     {
                         _cd = attackCooldown;
-                        _target.TakeDamage(attackDamage);
                         if (_anim != null && _aAttack) _anim.SetTrigger("Attack");
+                        StartCoroutine(DealHitAfterWindup(_target));
                     }
                 }
             }
 
             if (_anim != null && _aSpeed) _anim.SetFloat("Speed", moving);
+        }
+
+        IEnumerator DealHitAfterWindup(Combatant target)
+        {
+            yield return new WaitForSeconds(0.30f);
+            if (!enabled || _self == null || _self.IsDead || target == null || target.IsDead) yield break;
+            if (AITraversal.CanHit(transform, target.transform, attackRange * 1.2f))
+                target.TakeDamage(attackDamage);
         }
 
         void Face(Vector3 to, float dt)

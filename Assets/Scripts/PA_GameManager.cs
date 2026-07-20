@@ -24,6 +24,7 @@ namespace PostApoc
 
         public GameState State = GameState.Menu;
         public bool Paused;
+        bool _deathFrozen;
 
         public Camera Cam;
         public Light Sun;
@@ -90,6 +91,8 @@ namespace PostApoc
         {
             State = GameState.Menu;
             Paused = false;
+            _deathFrozen = false;
+            Time.timeScale = 1f;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
             if (Menu != null) Menu.enabled = true;
@@ -100,6 +103,9 @@ namespace PostApoc
         {
             if (State == GameState.Playing) return;
             State = GameState.Playing;
+            Paused = false;
+            _deathFrozen = false;
+            Time.timeScale = 1f;
             if (Menu != null) Menu.enabled = false;
 
             var worldGo = new GameObject("World");
@@ -115,21 +121,40 @@ namespace PostApoc
 
         void Update()
         {
-            if (State == GameState.Playing && PAInput.EscapeDown())
+            if (State == GameState.Playing && !_deathFrozen && PAInput.EscapeDown())
                 TogglePause();
         }
 
         void TogglePause()
         {
             Paused = !Paused;
+            ApplySimulationState();
             Cursor.lockState = Paused ? CursorLockMode.None : CursorLockMode.Locked;
             Cursor.visible = Paused;
             if (!Paused) PASettings.Save();   // persist any settings changed in the pause menu
         }
 
+        // The death decision screen freezes the simulation without presenting the pause menu.
+        public void SetDeathFrozen(bool frozen)
+        {
+            _deathFrozen = frozen;
+            if (frozen) Paused = false;
+            ApplySimulationState();
+            Cursor.lockState = frozen ? CursorLockMode.None : CursorLockMode.Locked;
+            Cursor.visible = frozen;
+        }
+
+        void ApplySimulationState()
+        {
+            Time.timeScale = (Paused || _deathFrozen) ? 0f : 1f;
+        }
+
         // Destroy the in-progress game (world, player, tutorial) and clear the combat registry.
         void Teardown()
         {
+            Paused = false;
+            _deathFrozen = false;
+            Time.timeScale = 1f;
             if (Tutorial != null) { Destroy(Tutorial.gameObject); Tutorial = null; }
             if (Player != null) { Destroy(Player.gameObject); Player = null; }
             if (World != null) { Destroy(World.gameObject); World = null; }

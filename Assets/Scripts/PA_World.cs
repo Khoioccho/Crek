@@ -594,6 +594,28 @@ namespace PostApoc
             }
         }
 
+        // Recover a wave that has made no combat progress. Early attempts place survivors
+        // back on the clear southern approach; the final failsafe resolves them outright.
+        public void RecoverStuckEnemies(int attempt)
+        {
+            var enemies = new System.Collections.Generic.List<Combatant>();
+            foreach (var c in Combatant.All)
+                if (c != null && !c.IsDead && c.faction == Faction.Enemy) enemies.Add(c);
+
+            if (attempt >= 3)
+            {
+                foreach (var c in enemies) c.TakeDamage(c.health + 1f);
+                return;
+            }
+
+            for (int i = 0; i < enemies.Count; i++)
+            {
+                float x = (i - (enemies.Count - 1) * 0.5f) * 1.8f;
+                float z = attempt == 1 ? -18f : -12f;
+                enemies[i].transform.position = VillageCenter + new Vector3(x, 0.05f, z);
+            }
+        }
+
         GameObject BuildGoblin(Transform parent, Vector3 pos)
         {
             var root = new GameObject("Goblin");
@@ -647,6 +669,62 @@ namespace PostApoc
         }
     }
 
+    // Lightweight collision-aware steering for the runtime-generated level. It tests the
+    // direct route first, then progressively wider detours around static obstacles.
+    public static class AITraversal
+    {
+        static readonly float[] DetourAngles = { 0f, 38f, -38f, 78f, -78f, 125f, -125f };
+
+        public static void Move(Transform mover, Vector3 desired, float speed, float dt)
+        {
+            desired.y = 0f;
+            if (desired.sqrMagnitude < 0.0001f || dt <= 0f) return;
+            desired.Normalize();
+            float step = speed * dt;
+            Vector3 origin = mover.position + Vector3.up * 0.65f;
+
+            for (int i = 0; i < DetourAngles.Length; i++)
+            {
+                Vector3 dir = Quaternion.Euler(0f, DetourAngles[i], 0f) * desired;
+                if (RouteBlocked(mover, origin, dir, step + 0.38f, 0.28f)) continue;
+                mover.position += dir * step;
+                return;
+            }
+        }
+
+        public static bool CanHit(Transform attacker, Transform target, float range)
+        {
+            Vector3 from = attacker.position + Vector3.up * 0.9f;
+            Vector3 to = target.position + Vector3.up * 0.9f;
+            Vector3 delta = to - from;
+            float dist = delta.magnitude;
+            if (dist > range || dist < 0.0001f) return false;
+
+            var hits = Physics.RaycastAll(from, delta / dist, dist, ~0, QueryTriggerInteraction.Ignore);
+            foreach (var hit in hits)
+            {
+                Transform h = hit.collider.transform;
+                if (h == attacker || h.IsChildOf(attacker) || h == target || h.IsChildOf(target)) continue;
+                return false;
+            }
+            return true;
+        }
+
+        static bool RouteBlocked(Transform mover, Vector3 origin, Vector3 dir, float distance, float radius)
+        {
+            var hits = Physics.SphereCastAll(origin, radius, dir, distance, ~0, QueryTriggerInteraction.Ignore);
+            foreach (var hit in hits)
+            {
+                Transform h = hit.collider.transform;
+                if (h == mover || h.IsChildOf(mover)) continue;
+                var body = h.GetComponentInParent<BodySeparation>();
+                if (body != null) continue; // mutual separation handles other fighters
+                return true;
+            }
+            return false;
+        }
+    }
+
     // Cheap mutual body collision for transform-driven kinematic characters (villagers +
     // skeletons): two kinematic bodies moved by script pass through each other, so each frame
     // we push overlapping bodies apart on the horizontal plane. The player is unaffected — its
@@ -683,7 +761,7 @@ namespace PostApoc
                 else
                 {
                     // exactly coincident: deterministic nudge so they don't lock together
-                    push += new Vector3((GetInstanceID() & 1) == 0 ? 0.02f : -0.02f, 0f, 0.01f);
+                    push += new Vector3((GetEntityId().GetHashCode() & 1) == 0 ? 0.02f : -0.02f, 0f, 0.01f);
                 }
             }
             if (push.sqrMagnitude > 1e-6f)

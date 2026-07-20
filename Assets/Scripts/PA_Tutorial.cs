@@ -80,6 +80,9 @@ namespace PostApoc
                                      : $"RISEN  HORDE  —  WAVE  {w + 1}/{waves.Length}");
 
                 yield return new WaitForSeconds(0.6f);
+                float lastHealth = RemainingEnemyHealth();
+                float noDamageTime = 0f;
+                int recoveryAttempt = 0;
                 while (Combatant.Count(Faction.Enemy) > 0)
                 {
                     if (_player.Combat != null && _player.Combat.IsDead)
@@ -94,6 +97,27 @@ namespace PostApoc
                         if (choice == 1) GameManager.Instance.ReturnToMenu();   // QUIT TO MENU
                         else GameManager.Instance.RestartGame();               // RETRY -> replay the prologue
                         yield break;
+                    }
+
+                    float health = RemainingEnemyHealth();
+                    if (health < lastHealth - 0.01f)
+                    {
+                        lastHealth = health;
+                        noDamageTime = 0f;
+                    }
+                    else noDamageTime += Time.deltaTime;
+
+                    // If combat makes no progress, move survivors back onto the clear road.
+                    // A third recovery force-resolves the wave so progression cannot soft-lock.
+                    if (noDamageTime >= 25f)
+                    {
+                        recoveryAttempt++;
+                        _world.RecoverStuckEnemies(recoveryAttempt);
+                        _hud.ShowToast(recoveryAttempt < 3
+                            ? "The remaining skeletons regroup on the southern road!"
+                            : "The last stragglers are driven from the battlefield!", 3f);
+                        noDamageTime = 0f;
+                        lastHealth = RemainingEnemyHealth();
                     }
                     yield return null;
                 }
@@ -113,6 +137,14 @@ namespace PostApoc
         }
 
         void OnTalked() { _talked = true; }
+
+        static float RemainingEnemyHealth()
+        {
+            float total = 0f;
+            foreach (var c in Combatant.All)
+                if (c != null && !c.IsDead && c.faction == Faction.Enemy) total += c.health;
+            return total;
+        }
 
         bool InHouse(Vector3 p)
         {

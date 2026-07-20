@@ -40,10 +40,26 @@ namespace PostApoc
 
         static int RawNav(Gamepad g, bool horizontal)
         {
-            if (g == null) return 0;
-            float v = horizontal
-                ? g.dpad.x.ReadValue() + g.leftStick.x.ReadValue()
-                : -(g.dpad.y.ReadValue() + g.leftStick.y.ReadValue());
+            float v = 0f;
+            if (g != null)
+                v = horizontal
+                    ? g.dpad.x.ReadValue() + g.leftStick.x.ReadValue()
+                    : -(g.dpad.y.ReadValue() + g.leftStick.y.ReadValue());
+
+            var k = K;
+            if (k != null)
+            {
+                if (horizontal)
+                {
+                    if (k.dKey.isPressed || k.rightArrowKey.isPressed) v += 1f;
+                    if (k.aKey.isPressed || k.leftArrowKey.isPressed) v -= 1f;
+                }
+                else
+                {
+                    if (k.sKey.isPressed || k.downArrowKey.isPressed) v += 1f;
+                    if (k.wKey.isPressed || k.upArrowKey.isPressed) v -= 1f;
+                }
+            }
             return v > 0.5f ? 1 : (v < -0.5f ? -1 : 0);
         }
 
@@ -187,9 +203,25 @@ namespace PostApoc
             var g = G; return g != null && g.startButton.wasPressedThisFrame;
         }
 
-        public static bool ConfirmDown() { var g = G; return g != null && g.buttonSouth.wasPressedThisFrame; }
+        public static bool ConfirmDown() => MenuSubmitDown();
 
-        public static bool BackDown() { var g = G; return g != null && g.buttonEast.wasPressedThisFrame; }
+        // Keyboard/gamepad confirmation for modal menus such as the death screen.
+        public static bool MenuSubmitDown()
+        {
+            var k = K;
+            if (k != null && (k.enterKey.wasPressedThisFrame ||
+                              k.numpadEnterKey.wasPressedThisFrame ||
+                              k.spaceKey.wasPressedThisFrame)) return true;
+            var g = G; return g != null && g.buttonSouth.wasPressedThisFrame;
+        }
+
+        public static bool BackDown()
+        {
+            var k = K;
+            if (k != null && k.escapeKey.wasPressedThisFrame) return true;
+            var g = G;
+            return g != null && g.buttonEast.wasPressedThisFrame;
+        }
 
         public static int MenuNavX() { Tick(); return _navX; }
         public static int MenuNavY() { Tick(); return _navY; }

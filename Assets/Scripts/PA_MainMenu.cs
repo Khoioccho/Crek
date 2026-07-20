@@ -77,9 +77,19 @@ namespace PostApoc
             int nav = PAInput.MenuNavY();
             if (nav != 0) _hover = _hover < 0 ? (nav > 0 ? 0 : 2) : Mathf.Clamp(_hover + nav, 0, 2);
 
-            if (PAInput.MouseLeftDown() && mh != -1) Activate(mh);
-            else if (PAInput.ConfirmDown() && _hover != -1) Activate(_hover);
+            if (PAInput.MouseLeftDown() && mh != -1)
+            {
+                Activate(mh);
+                return;
+            }
+            if (PAInput.ConfirmDown())
+            {
+                Activate(_hover >= 0 ? _hover : 0);
+                return;
+            }
 
+            // The controller Start button is a direct shortcut. Keyboard Enter/Space is
+            // handled above so it respects the currently focused menu item.
             if (PAInput.StartDown()) GameManager.Instance.StartGame();
         }
 
